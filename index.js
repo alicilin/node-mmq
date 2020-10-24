@@ -9,8 +9,11 @@ class MMQ {
         this.qcoll = this.dbname + '_queues';
         this.scoll = this.dbname + '_services';
         this.lcoll = this.dbname + '_logs';
+        this.pcoll = this.dbname + '_pubsub'
         this.db = null;
         this.client = client;
+        this.resolve = null;
+        this.pubsubNext = null;
     }
 
     async connect() {
@@ -37,6 +40,13 @@ class MMQ {
                 (await this.db.collection(this.lcoll).createIndex('channel'));
                 (await this.db.collection(this.lcoll).createIndex('event'));
             }
+
+            if (!collections.find(x => x.name === this.pcoll)) {
+                (await this.db.createCollection(this.pcoll, { capped: true, size: 10000000, max: 100000 }));
+                (await this.db.collection(this.pcoll).createIndex('channel'));
+                (await this.db.collection(this.pcoll).createIndex('service'));
+                (await this.db.collection(this.pcoll).createIndex('event'));
+            }
         }
 
         if (this.client.isConnected()) {
@@ -44,6 +54,10 @@ class MMQ {
         }
 
         (await this.db.collection(this.scoll).updateOne({ name: this.servicename }, { $set: { name: this.servicename } }, { upsert: true }));
+        let lastdoc = await this.db.collection(this.pcoll).findOne({ service: this.servicename, channel: this.channel }, { sort: [ ['_id', 'desc'] ] });
+        if (lastdoc) {
+            this.pubsubNext = lastdoc._id;
+        }
     }
 
     async log({ event, message, data }) {
@@ -73,12 +87,47 @@ class MMQ {
         return await (shift ? collection.findOneAndDelete(filter, options) : collection.findOneAndUpdate(filter, { $set: { status: 1 } }, options));
     }
 
+    async resolvent(events = null) {
+        let filter = {
+            service: this.servicename,
+            channel: this.channel
+        }
+
+        let options = {
+            tailable: true,
+            awaitdata: true,
+            numberOfRetries: -1
+        }
+
+        if (events) filter.event = _.isArray(events) ? { $in: events } : events;
+        if (this.pubsubNext) filter._id = { $gt: this.pubsubNext };
+
+        let cursor = this.db.collection(this.pcoll).find(filter, options);
+        while (true) {
+            await cursor.next();
+            while (true) {
+                if (typeof this.resolve !== 'function') {
+                    await sleep(100);
+                    continue;
+                }
+                break;
+            }
+
+            this.resolve.call(this);    
+        }
+    }
+
+    setResolve(resolve) {
+        this.resolve = resolve;
+    }
+
     async send({ service = '*', event, retry = 0, status = 0, data = { } }) {
         if (service === '*') {
             let services = (await this.db.collection(this.scoll).find({ }).toArray());
             for (let { name } of services) {
                 if (name !== this.servicename) {
                     (await this.db.collection(this.qcoll).insertOne({ channel: this.channel, service: name, event, retry, status, data }));
+                    (await this.db.collection(this.pcoll).insertOne({ channel: this.channel, service: name, event }));
                 }
             }
 
@@ -86,12 +135,13 @@ class MMQ {
         }
 
         (await this.db.collection(this.qcoll).insertOne({ channel: this.channel, service, event, retry, status, data }));
+        (await this.db.collection(this.pcoll).insertOne({ channel: this.channel, service, event }));
         return { channel: this.channel, service, event, retry, status, data };
     }
 }
 
 class Worker {
-    constructor(MMQI, shift = true, sleep = 1000) {
+    constructor(MMQI, shift = true) {
         this.mmqi = MMQI;
         this.listeners = [];
         this.sleep = sleep;
@@ -111,11 +161,19 @@ class Worker {
     }
 
     async start() {
+        this.mmqi.resolvent();
+        let empty = 0;
         while (true) {
-            (await sleep(this.sleep));
             let events = _.uniq(this.listeners.map(listener => listener.event));
+            if (empty > 3) (await new Promise(resolve => this.mmqi.setResolve(resolve)));
+            this.mmqi.setResolve(null);
             let { value } = (await this.mmqi.next(events, this.shift));
-            if (!value) continue;
+            if (!value) {
+                empty++;
+                continue;
+            }
+            
+            empty = 0;
             for (let listener of this.listeners) {
                 if (value.event === listener.event) {
                     let retrynum = 0;
