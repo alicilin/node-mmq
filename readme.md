@@ -2,7 +2,7 @@
 
     'use strict';
 	const { MongoClient } = require('mongodb');
-	const { MMQ, Worker} = require('./index');
+	const { MMQ, Worker} = require('@alicilin/node-mmq');
 	const  client = new  MongoClient('mongodb://localhost:27017', { useNewUrlParser:  true, useUnifiedTopology:  true });
 	const  mmq1 = new  MMQ({ client, servicename:  'auth', channel:  'test'});
 	const  mmq2 = new  MMQ({ client, servicename:  'matching', channel:  'test'});

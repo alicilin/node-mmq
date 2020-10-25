@@ -11,11 +11,11 @@ async function main() {
     (await mmq2.connect());
     
     for (let i = 1; i < 2; i++) {
-        (await mmq1.send({ service: '*', event: 'worked', maxretry: 15, data: { message: 'okeyyyy' } }));
+        (await mmq1.send({ service: '*', event: 'worked', retry: 15, data: { message: 'okeyyyy' } }));
     }
 
-    setTimeout(() => (mmq1.send({ service: '*', event: 'worked', maxretry: 15, data: { message: 'okeyyyy letsgo' } })), 3000);
-    let worker = new Worker(mmq2, false, 200);
+    setTimeout(() => (mmq1.send({ service: '*', event: 'worked', retry: 15, data: { message: 'okeyyyy letsgo' } })), 3000);
+    let worker = new Worker(mmq2);
     worker.on('worked', data => {
         console.log(data);
     });
