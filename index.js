@@ -1,4 +1,5 @@
 'use strict';
+const { times } = require('lodash');
 const _ = require('lodash');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 class MMQ {
@@ -12,7 +13,6 @@ class MMQ {
         this.pcoll = this.dbname + '_pubsub'
         this.db = null;
         this.client = client;
-        this.resolve = null;
         this.pubsubNext = null;
     }
 
@@ -68,7 +68,7 @@ class MMQ {
         return true;
     }
 
-    async next(events = null, shift = true) {
+    async next({ senders = null, events = null, shift = true }) {
         let filter = { 
             receiver: this.servicename, 
             channel: this.channel,
@@ -76,7 +76,8 @@ class MMQ {
         }
 
         if (events) filter.event = _.isArray(events) ? { $in: events } : events;
-         
+        if (senders) filter.sender = _.isArray(senders) ? { $in: senders } : senders;
+
         let options = { 
             sort: [ 
                 [
@@ -90,7 +91,7 @@ class MMQ {
         return await (shift ? collection.findOneAndDelete(filter, options) : collection.findOneAndUpdate(filter, { $set: { status: 1 } }, options));
     }
 
-    async resolvent(events = null) {
+    async resolvent({ senders = null, events = null, rcb = null }) {
         let filter = {
             receiver: this.servicename,
             channel: this.channel
@@ -103,25 +104,28 @@ class MMQ {
         }
 
         if (events) filter.event = _.isArray(events) ? { $in: events } : events;
+        if (senders) filter.sender = _.isArray(senders) ? { $in: senders } : senders;
         if (this.pubsubNext) filter._id = { $gt: this.pubsubNext };
 
         let cursor = this.db.collection(this.pcoll).find(filter, options);
         while (true) {
             await cursor.next();
             while (true) {
-                if (typeof this.resolve !== 'function') {
-                    await sleep(100);
+                if (typeof rcb.call(this) !== 'function') {
+                    await sleep(500);
                     continue;
                 }
                 break;
             }
 
-            this.resolve.call(this);    
+            let scb = rcb;
+            while (true) {
+                scb = scb.call(this);
+                if (typeof scb !== 'function') {
+                    break;
+                }
+            }    
         }
-    }
-
-    setResolve(resolve) {
-        this.resolve = resolve;
     }
 
     async send({ service = '*', event, retry = 0, status = 0, data = { } }) {
@@ -134,7 +138,7 @@ class MMQ {
                 }
             }
 
-            return { channel: this.channel, sender: this.servicename, receiver: services.map(x => x.name), event, retry, status, data };
+            return { channel: this.channel, sender: this.servicename, receiver: _.map(services, x => x.name), event, retry, status, data };
         }
 
         (await this.db.collection(this.qcoll).insertOne({ channel: this.channel, sender: this.servicename, receiver: service, event, retry, status, data }));
@@ -144,40 +148,101 @@ class MMQ {
 }
 
 class Worker {
-    constructor(MMQI, shift = true) {
+    constructor({ MMQI, shift = true, maxWaitSeconds = 10 }) {
         this.mmqi = MMQI;
         this.listeners = [];
         this.send = this.mmqi.send.bind(this.mmqi);
         this.shift = shift;
+        this.resolve = null;
+        this.maxWaitSeconds = 1000 * maxWaitSeconds;
+        this.WaitSeconds = 0;
+        this.intervalcb = () => {
+            this.WaitSeconds++;
+            if (this.WaitSeconds >= this.maxWaitSeconds) {
+                if (typeof this.resolve === 'function') {
+                    this.resolve.call(this);
+                }
+                
+                this.WaitSeconds = 0;
+            }
+        }
+        this.setInterval = setInterval.bind(this, this.intervalcb, 1);
+        this.clearInterval = clearInterval.bind(this);
+        this.iid = 0;
+        this.empty = 0;
     }
 
-    on(event, cb) {
-        this.listeners.push({ event, cb });
+    on(...params) {
+        if (params.length === 2) {
+            this.listeners.push({ event: params[0], cb: params[1] });
+        }
+        
+        if (params.length === 3) {
+            this.listeners.push({ event: params[0], sender: params[1], cb: params[2] });
+        }
+        
         return this;
     }
 
-    off(event, cb) {
-        let index = this.listeners.findIndex(listener => event === listener.event && listener.cb === cb);
-        this.listeners.splice(index, 1);
+    off(...params) {
+        if (params.length === 2) {
+            _.remove(this.listeners, listener => listener.event === params[0] && listener.cb === params[1]);
+        }
+
+        if (params.length === 3) {
+            _.remove(this.listeners, listener => listener.event === params[0] && listener.sender === params[1] && listener.cb === params[2]);
+        }
+        
         return this;
     }
 
     async start() {
-        this.mmqi.resolvent();
-        let empty = 0;
+        this.mmqi.resolvent({ rcb: () => this.resolve });
         while (true) {
-            let events = _.uniq(this.listeners.map(listener => listener.event));
-            if (empty > 3) (await new Promise(resolve => this.mmqi.setResolve(resolve)));
-            this.mmqi.setResolve(null);
-            let { value } = (await this.mmqi.next(events, this.shift));
+            let events = _.uniq(_.map(this.listeners, listener => listener.event));
+            let senders = _.uniq(_.compact(_.map(this.listeners, listener => listener.sender || null)));
+            let filter = { events, shift: this.shift };
+            if (senders.length > 0) filter.senders = senders;
+            if (this.empty > 2) {
+                (this.iid = this.setInterval.call(this));
+                (await new Promise(resolve => this.resolve = resolve));
+            }
+            this.resolve = null;
+            this.clearInterval.call(this, this.iid);
+            let { value } = (await this.mmqi.next(filter));
             if (!value) {
-                empty++;
+                this.empty++;
                 continue;
             }
             
-            empty = 0;
+            this.empty = 0;
             for (let listener of this.listeners) {
-                if (listener.event instanceof RegExp && listener.event.test(value.event) || value.event === listener.event) {
+                let condition = (
+                    (
+                        (
+                            listener.event instanceof RegExp 
+                            && 
+                            listener.event.test(value.event)
+                        ) 
+                        ||
+                        value.event === listener.event
+                    )
+                    &&
+                    (
+                        !listener.sender
+                        ||
+                        (
+                            (
+                                listener.sender instanceof RegExp
+                                &&
+                                listener.sender.test(value.sender)
+                            )
+                            ||
+                            value.sender === listener.sender
+                        )
+                    )
+                );
+                if (condition) {
                     let retrynum = 0;
                     while (true) {
                         try {
