@@ -177,7 +177,7 @@ class Worker {
             
             empty = 0;
             for (let listener of this.listeners) {
-                if (value.event === listener.event) {
+                if (listener.event instanceof RegExp && listener.event.test(value.event) || value.event === listener.event) {
                     let retrynum = 0;
                     while (true) {
                         try {

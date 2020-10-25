@@ -16,7 +16,7 @@ async function main() {
 
     setTimeout(() => (mmq1.send({ service: '*', event: 'worked', retry: 15, data: { message: 'okeyyyy letsgo' } })), 3000);
     let worker = new Worker(mmq2);
-    worker.on('worked', data => {
+    worker.on(/work.*/i, data => {
         console.log(data);
     });
     
