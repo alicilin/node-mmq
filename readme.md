@@ -11,14 +11,26 @@
 		(await  mmq1.connect());
 		(await  mmq2.connect());
 		for (let  i = 1; i < 20; i++) {
-			(await  mmq1.send({ service:  '*', event:  'worked', retry:  15, data: { message:  'okeyyyy' } }));
+			(await  mmq1.send({ service:  '*', event:  'worked', retry:  15, data: { message:  'okeyyyy' }, waitReply: false }));
 		}
 		
 		let  worker = new  Worker({ MMQI: mmqi });
 		worker.on('worked', data  => {
 			console.log(data);
 		});
-	
+
+		worker.on(/work.*/i, data  => {
+			console.log(data);
+		});
+
+		worker.on('worked', 'auth', data  => {  // auth is service name
+			console.log(data);
+		});
+
+		worker.on('worked', /au.*/i, data  => {  // auth is service name
+			console.log(data);
+		});
+
 		worker.start();
 	}
 	
