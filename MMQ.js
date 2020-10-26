@@ -102,7 +102,7 @@ class MMQ {
 
         let options = {
             tailable: true,
-            awaitdata: true,
+            awaitData: true,
             numberOfRetries: -1
         }
 

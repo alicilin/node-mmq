@@ -10,21 +10,21 @@ class Worker {
         this.shift = shift;
         this.resolve = null;
         this.maxWaitSeconds = 1000 * maxWaitSeconds;
-        this.WaitSeconds = 0;
+        this.waitSeconds = 0;
         this.intervalcb = () => {
-            this.WaitSeconds++;
-            if (this.WaitSeconds >= this.maxWaitSeconds) {
+            this.waitSeconds++;
+            if (this.waitSeconds >= this.maxWaitSeconds) {
                 if (typeof this.resolve === 'function') {
                     this.resolve.call(this);
                 }
 
-                this.WaitSeconds = 0;
+                this.waitSeconds = 0;
             }
         }
         this.setInterval = setInterval.bind(this, this.intervalcb, 1);
         this.clearInterval = clearInterval.bind(this);
         this.iid = 0;
-        this.empty = 0;
+        this.empty = false;
     }
 
     on(...params) {
@@ -58,7 +58,7 @@ class Worker {
             let senders = _.uniq(_.compact(_.map(this.listeners, listener => listener.sender || null)));
             let filter = { events, shift: this.shift };
             if (senders.length > 0) filter.senders = senders;
-            if (this.empty > 2) {
+            if (this.empty) {
                 (this.iid = this.setInterval.call(this));
                 (await new Promise(resolve => this.resolve = resolve));
             }
@@ -66,11 +66,11 @@ class Worker {
             this.clearInterval.call(this, this.iid);
             let { value } = (await this.mmqi.next(filter));
             if (!value) {
-                this.empty++;
+                this.empty = true;
                 continue;
             }
 
-            this.empty = 0;
+            this.empty = false;
             for (let listener of this.listeners) {
                 let condition = (
                     (
