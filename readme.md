@@ -14,7 +14,7 @@
 			(await  mmq1.send({ service:  '*', event:  'worked', retry:  15, data: { message:  'okeyyyy' } }));
 		}
 		
-		let  worker = new  Worker(mmq2);
+		let  worker = new  Worker({ MMQI: mmqi });
 		worker.on('worked', data  => {
 			console.log(data);
 		});

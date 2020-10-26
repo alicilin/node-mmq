@@ -148,7 +148,7 @@ class MMQ {
 }
 
 class Worker {
-    constructor({ MMQI, shift = true, maxWaitSeconds = 10 }) {
+    constructor({ MMQI, shift = true, maxWaitSeconds = 60 }) {
         this.mmqi = MMQI;
         this.listeners = [];
         this.send = this.mmqi.send.bind(this.mmqi);
