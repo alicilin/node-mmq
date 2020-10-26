@@ -32,6 +32,7 @@ class MMQ {
                 (await this.db.collection(this.qcoll).createIndex('sender'));
                 (await this.db.collection(this.qcoll).createIndex('receiver'));
                 (await this.db.collection(this.qcoll).createIndex('event'));
+                (await this.db.collection(this.qcoll).createIndex('parent'));
                 (await this.db.collection(this.qcoll).createIndex('status'));
             }
 
@@ -48,6 +49,7 @@ class MMQ {
                 (await this.db.collection(this.pcoll).createIndex('channel'));
                 (await this.db.collection(this.pcoll).createIndex('sender'));
                 (await this.db.collection(this.pcoll).createIndex('receiver'));
+                (await this.db.collection(this.pcoll).createIndex('parent'));
                 (await this.db.collection(this.pcoll).createIndex('event'));
             }
         }
@@ -68,7 +70,7 @@ class MMQ {
         return true;
     }
 
-    async next({ senders = null, events = null, shift = true }) {
+    async next({ senders = null, events = null, filters = { }, shift = true }) {
         let filter = { 
             receiver: this.servicename, 
             channel: this.channel,
@@ -77,6 +79,7 @@ class MMQ {
 
         if (events) filter.event = _.isArray(events) ? { $in: events } : events;
         if (senders) filter.sender = _.isArray(senders) ? { $in: senders } : senders;
+        if (filters) filter = _.merge(filter, filters);
 
         let options = { 
             sort: [ 
@@ -91,7 +94,7 @@ class MMQ {
         return await (shift ? collection.findOneAndDelete(filter, options) : collection.findOneAndUpdate(filter, { $set: { status: 1 } }, options));
     }
 
-    async resolvent({ senders = null, events = null, rcb = null }) {
+    async resolver({ senders = null, events = null, filters = {}, rcb = null }) {
         let filter = {
             receiver: this.servicename,
             channel: this.channel
@@ -105,6 +108,7 @@ class MMQ {
 
         if (events) filter.event = _.isArray(events) ? { $in: events } : events;
         if (senders) filter.sender = _.isArray(senders) ? { $in: senders } : senders;
+        if (filters) filter = _.merge(filter, filters);
         if (this.pubsubNext) filter._id = { $gt: this.pubsubNext };
 
         let cursor = this.db.collection(this.pcoll).find(filter, options);
@@ -128,7 +132,7 @@ class MMQ {
         }
     }
 
-    async send({ service = '*', event, retry = 0, status = 0, data = { } }) {
+    async send({ service = '*', event, retry = 0, status = 0, data = { }, parent = null, waitReply = false }) {
         if (service === '*') {
             let services = (await this.db.collection(this.scoll).find({ }).toArray());
             for (let { name } of services) {
@@ -141,14 +145,50 @@ class MMQ {
             return { channel: this.channel, sender: this.servicename, receiver: _.map(services, x => x.name), event, retry, status, data };
         }
 
-        (await this.db.collection(this.qcoll).insertOne({ channel: this.channel, sender: this.servicename, receiver: service, event, retry, status, data }));
-        (await this.db.collection(this.pcoll).insertOne({ channel: this.channel, sender: this.servicename, receiver: service, event }));
+        let qi = await this.db.collection(this.qcoll).insertOne({ channel: this.channel, sender: this.servicename, receiver: service, event, retry, status, parent, data });
+        let pi = await this.db.collection(this.pcoll).insertOne({ channel: this.channel, sender: this.servicename, receiver: service, parent, event });
+
+        if (waitReply) {
+            let maxWaitSeconds = 1000 * 60 * 1;
+            let waitSeconds = 0;
+            let resolve = null;
+            let timeout = 20 * 60 * 1000;
+            let timeouted = false;
+            let intervalcb = () => {
+                waitSeconds++;
+                if (waitSeconds >= maxWaitSeconds) {
+                    if (typeof resolve === 'function') {
+                        resolve.call(this);
+                    }
+
+                    waitSeconds = 0;
+                }
+            }
+            let _setInterval = setInterval.bind(this, intervalcb, 1);
+            let _clearInterval = clearInterval.bind(this);
+            let iid = 0;
+            setTimeout(() => (timeouted = true), timeout);
+            this.resolver({ senders: service, events: event, filters: { parent: pi.insertedId },  rcb: () => resolve });
+            while (true) {
+                if (timeouted) return null;
+                (iid = _setInterval.call(this));
+                (await new Promise(r => (resolve = r)));
+                resolve = null;
+                _clearInterval.call(this, iid);
+                let { value } = (await this.next({ senders: service, events: event, filters: { parent: qi.insertedId }, shift: true }));
+                if (!value) continue;
+
+                return value;
+            }
+        }
+
+        
         return { channel: this.channel, sender: this.servicename, receiver: service, event, retry, status, data };
     }
 }
 
 class Worker {
-    constructor({ MMQI, shift = true, maxWaitSeconds = 60 }) {
+    constructor({ MMQI, shift = true, maxWaitSeconds = 600 }) {
         this.mmqi = MMQI;
         this.listeners = [];
         this.send = this.mmqi.send.bind(this.mmqi);
@@ -197,7 +237,7 @@ class Worker {
     }
 
     async start() {
-        this.mmqi.resolvent({ rcb: () => this.resolve });
+        this.mmqi.resolver({ rcb: () => this.resolve });
         while (true) {
             let events = _.uniq(_.map(this.listeners, listener => listener.event));
             let senders = _.uniq(_.compact(_.map(this.listeners, listener => listener.sender || null)));
