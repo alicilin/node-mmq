@@ -23,11 +23,11 @@
 			console.log(data);
 		});
 
-		worker.on('worked', 'auth', data  => {  // auth is service name
+		worker.on('worked', 'auth', data  => {  // auth is sender service name
 			console.log(data);
 		});
 
-		worker.on('worked', /au.*/i, data  => {  // auth is service name
+		worker.on('worked', /au.*/i, data  => {  // auth is sender service name
 			console.log(data);
 		});
 

@@ -19,44 +19,41 @@ class MMQ {
     async connect() {
         if (!this.client.isConnected()) {
             (await this.client.connect());
-            this.db = this.client.db(this.dbname);
-            let collections = await this.db.listCollections().toArray();
-            if (!collections.find(x => x.name === this.scoll)) {
-                (await this.db.createCollection(this.scoll));
-                (await this.db.collection(this.scoll).createIndex('name'));
-            }
-
-            if (!collections.find(x => x.name === this.qcoll)) {
-                (await this.db.createCollection(this.qcoll));
-                (await this.db.collection(this.qcoll).createIndex('channel'));
-                (await this.db.collection(this.qcoll).createIndex('sender'));
-                (await this.db.collection(this.qcoll).createIndex('receiver'));
-                (await this.db.collection(this.qcoll).createIndex('event'));
-                (await this.db.collection(this.qcoll).createIndex('parent'));
-                (await this.db.collection(this.qcoll).createIndex('status'));
-            }
-
-            if (!collections.find(x => x.name === this.lcoll)) {
-                (await this.db.createCollection(this.lcoll));
-                (await this.db.collection(this.lcoll).createIndex('sender'));
-                (await this.db.collection(this.lcoll).createIndex('receiver'));
-                (await this.db.collection(this.lcoll).createIndex('channel'));
-                (await this.db.collection(this.lcoll).createIndex('event'));
-            }
-
-            if (!collections.find(x => x.name === this.pcoll)) {
-                (await this.db.createCollection(this.pcoll, { capped: true, size: 10000000, max: 100000 }));
-                (await this.db.collection(this.pcoll).insertOne({ channel: 'test', sender: 'test', receiver: 'test', event: 'test' }));
-                (await this.db.collection(this.pcoll).createIndex('channel'));
-                (await this.db.collection(this.pcoll).createIndex('sender'));
-                (await this.db.collection(this.pcoll).createIndex('receiver'));
-                (await this.db.collection(this.pcoll).createIndex('parent'));
-                (await this.db.collection(this.pcoll).createIndex('event'));
-            }
+        }
+        
+        this.db = this.client.db(this.dbname);
+        let collections = await this.db.listCollections().toArray();
+        if (!collections.find(x => x.name === this.scoll)) {
+            (await this.db.createCollection(this.scoll));
+            (await this.db.collection(this.scoll).createIndex('name'));
         }
 
-        if (this.client.isConnected()) {
-            this.db = this.client.db(this.dbname);
+        if (!collections.find(x => x.name === this.qcoll)) {
+            (await this.db.createCollection(this.qcoll));
+            (await this.db.collection(this.qcoll).createIndex('channel'));
+            (await this.db.collection(this.qcoll).createIndex('sender'));
+            (await this.db.collection(this.qcoll).createIndex('receiver'));
+            (await this.db.collection(this.qcoll).createIndex('event'));
+            (await this.db.collection(this.qcoll).createIndex('parent'));
+            (await this.db.collection(this.qcoll).createIndex('status'));
+        }
+
+        if (!collections.find(x => x.name === this.lcoll)) {
+            (await this.db.createCollection(this.lcoll));
+            (await this.db.collection(this.lcoll).createIndex('sender'));
+            (await this.db.collection(this.lcoll).createIndex('receiver'));
+            (await this.db.collection(this.lcoll).createIndex('channel'));
+            (await this.db.collection(this.lcoll).createIndex('event'));
+        }
+
+        if (!collections.find(x => x.name === this.pcoll)) {
+            (await this.db.createCollection(this.pcoll, { capped: true, size: 10000000, max: 100000 }));
+            (await this.db.collection(this.pcoll).insertOne({ channel: 'test', sender: 'test', receiver: 'test', event: 'test' }));
+            (await this.db.collection(this.pcoll).createIndex('channel'));
+            (await this.db.collection(this.pcoll).createIndex('sender'));
+            (await this.db.collection(this.pcoll).createIndex('receiver'));
+            (await this.db.collection(this.pcoll).createIndex('parent'));
+            (await this.db.collection(this.pcoll).createIndex('event'));
         }
 
         (await this.db.collection(this.scoll).updateOne({ name: this.servicename }, { $set: { name: this.servicename } }, { upsert: true }));

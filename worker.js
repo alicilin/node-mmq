@@ -102,7 +102,7 @@ class Worker {
                     while (true) {
                         try {
                             let cbr = listener.cb.call(this, value);
-                            if (cbr instanceof Promise) await cbr;
+                            if (cbr instanceof Promise) (await cbr);
                             break;
                         } catch (error) {
                             if (value.retry > retrynum++) {
@@ -110,7 +110,7 @@ class Worker {
                                 continue;
                             }
 
-                            await this.mmqi.log({ sender: value.sender, event: value.event, data: value.data, message: serror.message });
+                            await this.mmqi.log({ sender: value.sender, event: value.event, data: value.data, message: error.message });
                             await this.send({ service: value.receiver, event: value.event, retry: 0, status: 2, data: value.data });
                             break;
                         }
