@@ -111,7 +111,6 @@ class Worker {
                             }
 
                             await this.mmqi.log({ sender: value.sender, event: value.event, data: value.data, message: error.message });
-                            await this.send({ service: value.receiver, event: value.event, retry: 0, status: 2, data: value.data });
                             break;
                         }
                     }
