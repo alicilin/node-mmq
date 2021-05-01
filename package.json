@@ -1,6 +1,6 @@
 {
   "name": "@alicilin/node-mmq",
-  "version": "1.0.15",
+  "version": "1.0.20",
   "description": "node.js inter-microservice messaging",
   "main": "index.js",
   "scripts": {
@@ -10,13 +10,14 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "lodash": "^4.17.20"
+    "lodash": "^4.17.21",
+    "object-hash": "^2.1.1"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/alicilin/node-mmq.git"
   },
   "devDependencies": {
-    "mongodb": "^3.6.2"
+    "mongodb": "^3.6.6"
   }
 }

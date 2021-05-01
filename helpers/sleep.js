@@ -1,2 +1,2 @@
 'use strict';
-module.exports = ms => new Promise(resolve => setTimeout(resolve, ms));
+module.exports = require('util').promisify(setTimeout);
