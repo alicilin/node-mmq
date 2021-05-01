@@ -1,9 +1,11 @@
 'use strict';
 const _ = require('lodash');
 const sleep = require('./helpers/sleep');
+const validators = require('./validators/Worker');
 
 class Worker {
     constructor({ MMQI, shift = true }) {
+        validators.constructor.validate({ MMQI, shift });
         this.MMQI = MMQI;
         this.listeners = [];
         this.send = this.MMQI.send.bind(this.MMQI);
@@ -12,6 +14,7 @@ class Worker {
     }
 
     on(...params) {
+        validators.on.validate(params);
         if (_.size(params) === 2) {
             this.listeners.push({ event: params[0], cb: params[1] });
         }
@@ -24,6 +27,7 @@ class Worker {
     }
 
     off(...params) {
+        validators.off.validate(params);
         if (_.size(params) === 2) {
             _.remove(
                 this.listeners, 

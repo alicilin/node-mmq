@@ -2,11 +2,14 @@
 const _ = require('lodash');
 const sleep = require('./helpers/sleep');
 const objectHash = require('object-hash');
+const moment = require('moment');
+const validators = require('./validators/MMQ');
 
 class MMQ {
     constructor({ client, channel, servicename, dbname }) {
+        validators.constructor.validate({ client, channel, servicename, dbname });
         this.channel = channel;
-        this.servicename = servicename || 'default';
+        this.servicename = servicename;
         this.dbname = dbname || 'MMQ';
         this.scoll = this.dbname + '_services';
         this.qcoll = this.dbname + '_queue';
@@ -44,6 +47,7 @@ class MMQ {
             (await this.db.collection(this.qcoll).createIndex('event'));
             (await this.db.collection(this.qcoll).createIndex('parent'));
             (await this.db.collection(this.qcoll).createIndex('status'));
+            (await this.db.collection(this.qcoll).createIndex('delay'));
         }
 
         if (!_.find(collections, x => x.name === this.lockcoll)) {
@@ -67,6 +71,7 @@ class MMQ {
     }
 
     async log({ sender, event, message, data }) {
+        (await validators.log.validateAsync({ sender, event, message, data }));
         let doc = {};
         _.set(doc, 'sender', sender);
         _.set(doc, 'receiver', this.servicename);
@@ -80,6 +85,7 @@ class MMQ {
     }
 
     async lock(key, ms = 250) {
+        (await validators.lock.validateAsync({ key, ms }));
         let hash = objectHash(key);
         while (true) {
             try {
@@ -93,19 +99,35 @@ class MMQ {
     }
 
     async unlock(key) {
+        (await validators.unlock.validateAsync(key));
         (await this.db.collection(this.lockcoll).deleteOne({ key: objectHash(key) }));
     }
 
     async next({ senders = null, events = null, filters = {}, shift = true }) {
+        (await validators.next.validateAsync({ senders, events, filters, shift }));
         let filter = {
             receiver: this.servicename,
             channel: this.channel,
-            status: 0
+            status: 0,
+            delay: {
+                $lte: (
+                    moment()
+                        .toDate()
+                )
+            }
         };
 
-        if (events) filter.event = _.isArray(events) ? { $in: events } : events;
-        if (senders) filter.sender = _.isArray(senders) ? { $in: senders } : senders;
-        if (filters) filter = _.merge(filter, filters);
+        if (events) {
+            filter.event = _.isArray(events) ? { $in: events } : events;
+        }
+        
+        if (senders) {
+            filter.sender = _.isArray(senders) ? { $in: senders } : senders;
+        }
+
+        if (filters) {
+            filter = _.merge(filter, filters);
+        }
 
         let options = {
             sort: [
@@ -124,7 +146,35 @@ class MMQ {
         );
     }
 
-    async send({ service = '*', event, retry = 0, status = 0, data = {}, parent = null, waitReply = false }) {
+    async send({ service = '*', event, retry = 0, status = 0, data = {}, parent = null, waitReply = false, delay = null }) {
+        (await validators.send.validateAsync({ service, event, retry, status, data, parent, waitReply, delay }));
+        if (_.isNil(delay)) {
+            delay = (
+                moment()
+                    .subtract(10, 'minute')
+                    .toDate()
+            );
+        }
+
+        if (_.isInteger(delay)) {
+            delay = (
+                moment()
+                    .add(delay, 'ms')
+                    .toDate()
+            );
+        }
+
+        if (_.isString(delay)) {
+            delay = (
+                moment(delay)
+                    .toDate()
+            );
+        }
+
+        if (!_.isDate(delay)) {
+            throw new Error('DELAY_IS_NOT_DATE')
+        }
+
         if (service === '*') {
             let services = (await this.db.collection(this.scoll).find({}).toArray());
             let doc = {};
@@ -137,6 +187,7 @@ class MMQ {
                     _.set(doc, 'retry', retry);
                     _.set(doc, 'status', status);
                     _.set(doc, 'data', data);
+                    _.set(doc, 'delay', delay);
                     (await this.db.collection(this.qcoll).insertOne(doc));
                 }
             }
@@ -148,7 +199,8 @@ class MMQ {
                 event: event,
                 retry: retry,
                 status: status,
-                data: data
+                data: data,
+                delay: delay
             };
         }
 
@@ -161,18 +213,27 @@ class MMQ {
         _.set(doc, 'status', status);
         _.set(doc, 'data', data);
         _.set(doc, 'parent', parent);
+        _.set(doc, 'delay', delay);
 
         let docid = _.get((await this.db.collection(this.qcoll).insertOne(doc)), 'insertedId');
         if (waitReply) {
-            let startms = new Date().getTime();
+            let startms = moment().valueOf();
             let maxWaitms = 2 * 60 * 1000;
-
+            let nextp = { 
+                senders: service, 
+                events: event, 
+                filters: { 
+                    parent: docid 
+                }, 
+                shift: true 
+            };
+            
             while (true) {
-                if (new Date().getTime() - startms > maxWaitms) {
+                if ((moment().valueOf() - startms) > maxWaitms) {
                     return null;
                 }
 
-                let { value } = (await this.next({ senders: service, events: event, filters: { parent: docid }, shift: true }));
+                let { value } = (await this.next(nextp));
                 if (!_.isNil(value)) {
                     return value;
                 }
@@ -190,7 +251,8 @@ class MMQ {
             event: event,
             retry: retry,
             status: status,
-            data: data
+            data: data,
+            delay: delay
         };
     }
 }
