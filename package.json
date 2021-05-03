@@ -1,6 +1,6 @@
 {
   "name": "@alicilin/node-mmq",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "node.js inter-microservice messaging",
   "main": "index.js",
   "scripts": {
@@ -18,13 +18,14 @@
     "socket.io": "^4.0.1",
     "socket.io-client": "^4.0.1",
     "socket.io-redis": "^6.1.0",
-    "uuid": "^8.3.2"
+    "uuid": "^8.3.2",
+    "mongodb": "^3.6.6"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/alicilin/node-mmq.git"
   },
   "devDependencies": {
-    "mongodb": "^3.6.6"
+    
   }
 }
