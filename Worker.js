@@ -63,65 +63,74 @@ class Worker {
             filter.senders = senders;
         }
 
-        for await (let value of this.MMQI.next(filter)) {
-            for (let listener of this.listeners) {
-                let condition = (
-                    (
-                        (
-                            listener.event instanceof RegExp
-                            &&
-                            listener.event.test(value.event)
-                        )
-                        ||
-                        value.event === listener.event
-                    )
-                    &&
-                    (
-                        !listener.sender
-                        ||
-                        (
+        while (true) {
+            try {
+                for await (let value of this.MMQI.next(filter)) {
+                    for (let listener of this.listeners) {
+                        let condition = (
                             (
-                                listener.sender instanceof RegExp
-                                &&
-                                listener.sender.test(value.sender)
+                                (
+                                    listener.event instanceof RegExp
+                                    &&
+                                    listener.event.test(value.event)
+                                )
+                                ||
+                                value.event === listener.event
                             )
-                            ||
-                            value.sender === listener.sender
-                        )
-                    )
-                );
+                            &&
+                            (
+                                !listener.sender
+                                ||
+                                (
+                                    (
+                                        listener.sender instanceof RegExp
+                                        &&
+                                        listener.sender.test(value.sender)
+                                    )
+                                    ||
+                                    value.sender === listener.sender
+                                )
+                            )
+                        );
 
-                if (condition) {
-                    let retrynum = 0;
-                    let log = {
-                        sender: value.sender,
-                        event: value.event,
-                        data: value.data,
-                    };
+                        if (condition) {
+                            let retrynum = 0;
+                            let log = {
+                                sender: value.sender,
+                                event: value.event,
+                                data: value.data,
+                            };
 
-                    let runner = async () => {
-                        while (true) {
-                            try {
-                                let cbr = listener.cb.call(this, value);
-                                if (cbr instanceof Promise) {
-                                    (await cbr);
+                            let runner = async () => {
+                                while (true) {
+                                    try {
+                                        let cbr = listener.cb.call(this, value);
+                                        if (cbr instanceof Promise) {
+                                            (await cbr);
+                                        }
+
+                                        break;
+                                    } catch (error) {
+                                        if (value.retry > retrynum++) {
+                                            (await sleep(10));
+                                            continue;
+                                        }
+
+                                        (await this.MMQI.log(_.set(log, 'message', error.message)));
+                                        break;
+                                    }
                                 }
+                            };
 
-                                break;
-                            } catch (error) {
-                                if (value.retry > retrynum++) {
-                                    (await sleep(10));
-                                    continue;
-                                }
-
-                                (await this.MMQI.log(_.set(log, 'message', error.message)));
-                                break;
-                            }
+                            setImmediate(runner.bind(this));
                         }
-                    };
-
-                    setImmediate(runner.bind(this));
+                    }
                 }
+
+            } catch (error) {
+                console.log(error);
+                (await sleep(1000));
+                continue;
             }
         }
     }
