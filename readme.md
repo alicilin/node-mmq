@@ -9,7 +9,7 @@
         { 
             auth: { 
                 user: 'root', 
-                password: 'alicilin27' 
+                password: 'xxx' 
             }, 
             useNewUrlParser: true, 
             useUnifiedTopology: true 
