@@ -1,6 +1,6 @@
 {
   "name": "@alicilin/node-mmq",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "description": "node.js inter-microservice messaging",
   "main": "index.js",
   "scripts": {

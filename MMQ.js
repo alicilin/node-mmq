@@ -8,7 +8,6 @@ const Axios = require('axios').default;
 const http = require('http');
 const https = require('https');
 const sleep = require('./helpers/sleep');
-const RPromise = require('./helpers/resolvable-promise');
 
 class MMQ {
     constructor({ channel = 'default', servicename = 'master', ip, port = 9900, secret = 'mmq12', transport = 'polling' }) {
@@ -115,7 +114,7 @@ class MMQ {
                         continue;
                     }
 
-                    (await RPromise(this.resolver));
+                    (await new Promise(resolve => (this.resolver = resolve)));
                     continue;
                 }
 
