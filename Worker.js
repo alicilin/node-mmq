@@ -4,12 +4,11 @@ const sleep = require('./helpers/sleep');
 const validators = require('./validators/Worker');
 
 class Worker {
-    constructor({ MMQI, shift = true }) {
-        validators.constructor.validate({ MMQI, shift });
+    constructor({ MMQI }) {
+        validators.constructor.validate({ MMQI });
         this.MMQI = MMQI;
         this.listeners = [];
         this.send = this.MMQI.send.bind(this.MMQI);
-        this.shift = shift;
         this.empty = false;
     }
 
@@ -56,22 +55,15 @@ class Worker {
     }
 
     async start() {
-        while (true) {
-            let events = _.uniq(_.map(this.listeners, listener => listener.event));
-            let senders = _.uniq(_.compact(_.map(this.listeners, listener => listener.sender || null)));
-            let filter = { events };
-            
-            if (_.size(senders) > 0) {
-                filter.senders = senders;
-            }
+        let events = _.uniq(_.map(this.listeners, listener => listener.event));
+        let senders = _.uniq(_.compact(_.map(this.listeners, listener => listener.sender || null)));
+        let filter = { events };
 
-            let { value } = (await this.MMQI.next(_.merge(filter, { shift: this.shift })));
-            if (_.isNil(value)) {
-                (await sleep(1000));
-                continue;
-            }
+        if (_.size(senders) > 0) {
+            filter.senders = senders;
+        }
 
-            (await this.MMQI.lock(filter, 500));
+        for await (let value of this.MMQI.next(filter)) {
             for (let listener of this.listeners) {
                 let condition = (
                     (
@@ -98,7 +90,7 @@ class Worker {
                         )
                     )
                 );
-                
+
                 if (condition) {
                     let retrynum = 0;
                     let log = {
@@ -107,29 +99,30 @@ class Worker {
                         data: value.data,
                     };
 
-                    while (true) {
-                        try {
-                            let cbr = listener.cb.call(this, value);
-                            if (cbr instanceof Promise) {
-                                (await cbr);
-                            }
+                    let runner = async () => {
+                        while (true) {
+                            try {
+                                let cbr = listener.cb.call(this, value);
+                                if (cbr instanceof Promise) {
+                                    (await cbr);
+                                }
 
-                            break;
-                        } catch (error) {
-                            if (value.retry > retrynum++) {
-                                (await sleep(10));
-                                continue;
-                            }
+                                break;
+                            } catch (error) {
+                                if (value.retry > retrynum++) {
+                                    (await sleep(10));
+                                    continue;
+                                }
 
-                            (await this.MMQI.log(_.set(log, 'message', error.message)));
-                            break;
+                                (await this.MMQI.log(_.set(log, 'message', error.message)));
+                                break;
+                            }
                         }
-                    }
+                    };
+
+                    setImmediate(runner.bind(this));
                 }
             }
-            
-            (await this.MMQI.unlock(filter));
-            (await sleep(250));
         }
     }
 }

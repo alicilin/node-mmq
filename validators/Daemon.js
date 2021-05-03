@@ -3,24 +3,36 @@ const joi = require('joi');
 const validators = {
     constructor: joi.object(
         {
-            channel: joi.string().required(),
-            servicename: joi.string().required(),
+            mongo: joi.array().items(joi.any().required()).required(),
+            redis: joi.array().items(joi.any().required()).required(),
+            dbname: joi.string().optional().allow(null),
             ip: joi.string().required(),
             port: joi.number().integer().min(7000).max(9999).required(),
             secret: joi.string().required(),
             transport: joi.string().required().valid('websocket', 'polling')
         }
     ),
-    log: joi.object(
+    send: joi.object(
         {
-            sender: joi.string().required(),
+            service: joi.string().required(),
             event: joi.string().required(),
-            message: joi.string().required(),
-            data: joi.any().optional().allow(null)
+            retry: joi.number().integer().required(),
+            data: joi.any().required(),
+            parent: joi.any().optional().allow(null),
+            delay: (
+                joi
+                    .alternatives()
+                    .try(
+                        joi.number().integer().required(),
+                        joi.string().required(),
+                    )
+                    .optional()
+                    .allow(null)
+            )
+
         }
     ),
-
-    next: joi.object(
+    shift: joi.object(
         {
             senders: (
                 joi
@@ -46,28 +58,14 @@ const validators = {
             filters: joi.object().unknown(true).required(),
         }
     ),
-
-    send: joi.object(
+    log: joi.object(
         {
-            service: joi.string().required(),
+            sender: joi.string().required(),
             event: joi.string().required(),
-            retry: joi.number().integer().required(),
-            data: joi.any().required(),
-            parent: joi.any().optional().allow(null),
-            waitReply: joi.boolean().required(),
-            delay: (
-                joi
-                    .alternatives()
-                    .try(
-                        joi.number().integer().required(),
-                        joi.string().required(),
-                    )
-                    .optional()
-                    .allow(null)
-            )
-
+            message: joi.string().required(),
+            data: joi.any().optional().allow(null)
         }
-    )
+    ),
 
 };
 

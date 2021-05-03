@@ -1,4 +1,5 @@
 'use strict';
 const MMQ = require('./MMQ');
-const Worker = require('./worker');
-module.exports = { MMQ, Worker };
+const Worker = require('./Worker');
+const Daemon = require('./Daemon');
+module.exports = { MMQ, Worker, Daemon };

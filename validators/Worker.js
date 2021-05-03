@@ -6,8 +6,7 @@ const MMQIValidator = (value, helpers) => value instanceof MMQ ? value : helpers
 const validators = {
     constructor: joi.object(
         {
-            MMQI: joi.object().custom(MMQIValidator, 'MMQI'),
-            shift: joi.boolean().required() 
+            MMQI: joi.object().custom(MMQIValidator, 'MMQI')
         }
     ),
     on: (

@@ -10,10 +10,15 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "axios": "^0.21.1",
+    "express": "^4.17.1",
     "joi": "^17.4.0",
     "lodash": "^4.17.21",
     "moment": "^2.29.1",
-    "object-hash": "^2.1.1"
+    "socket.io": "^4.0.1",
+    "socket.io-client": "^4.0.1",
+    "socket.io-redis": "^6.1.0",
+    "uuid": "^8.3.2"
   },
   "repository": {
     "type": "git",

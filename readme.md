@@ -1,38 +1,50 @@
 # Mongodb Message Queue System
 
-    'use strict';
-	const { MongoClient } = require('mongodb');
-	const { MMQ, Worker} = require('@alicilin/node-mmq');
-	const  client = new  MongoClient('mongodb://localhost:27017', { useNewUrlParser:  true, useUnifiedTopology:  true });
-	const  mmq1 = new  MMQ({ client, servicename:  'auth', channel:  'test'});
-	const  mmq2 = new  MMQ({ client, servicename:  'matching', channel:  'test'});
-	
-	async  function  main() {
-		(await  mmq1.connect());
-		(await  mmq2.connect());
-		for (let  i = 1; i < 20; i++) {
-			(await  mmq1.send({ service:  '*', event:  'worked', retry:  15, data: { message:  'okeyyyy' }, waitReply: false }));
-		}
-		
-		let  worker = new  Worker({ MMQI: mmqi });
-		worker.on('worked', data  => {
-			console.log(data);
-		});
+    const Daemon = require('./Daemon');
+    const MMQ = require('./MMQ');
+    const Worker = require('./Worker');
+    // const { MMQ, Worker, Daemon} = require('./index');
+    let moptions = [
+        'mongodb://localhost:27017', 
+        { 
+            auth: { 
+                user: 'root', 
+                password: 'alicilin27' 
+            }, 
+            useNewUrlParser: true, 
+            useUnifiedTopology: true 
+        }
+    ];
 
-		worker.on(/work.*/i, data  => {
-			console.log(data);
-		});
+    let roptions = [
+        { 
+            host: 'localhost', 
+            port: 6379,
+            key: 'mrqueue' 
+        }
+    ];
 
-		worker.on('worked', 'auth', data  => {  // auth is sender service name
-			console.log(data);
-		});
+    const server = new Daemon({ mongo: moptions, redis: roptions, ip: 'localhost', port: 8080, secret: 'mmq-123', transport: 'websocket' });
+    const mmq1 = new MMQ({ servicename: 'master', channel: 'test', ip: 'localhost', port: 8080, secret: 'mmq-123', transport: 'websocket' });
+    const mmq2 = new MMQ({ servicename: 'child', channel: 'test', ip: 'localhost', port: 8080, secret: 'mmq-123', transport: 'websocket' });
 
-		worker.on('worked', /au.*/i, data  => {  // auth is sender service name
-			console.log(data);
-		});
+    async function main() {
+        (await server.migrations());
+        (await server.start());
+        
+        // for (let i = 1; i < 1000; i++) {
+        //     (await mmq1.send({ service: '*', event: 'worked', retry: 15, data: { message: 'okeyyyy - ' +i } }));
+        // }
 
-		worker.start();
-	}
-	
-	main()
+        setTimeout(() => (mmq1.send({ service: '^chil', event: 'worked', retry: 15, data: { message: 'okeyyyy letsgo' } })), 3 * 1000);
+        let worker = new Worker({ MMQI: mmq2 });
+        worker.on('worked', async data => {
+            // (await (new Promise(r => setTimeout(r, 1000))));
+            console.log(data.data.message, 'worker 1');
+        });
+        
+        worker.start();
+    }
+
+    main()
 ```
