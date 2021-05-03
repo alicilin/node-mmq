@@ -118,7 +118,7 @@ async function send(req, res) {
                 }
             }
 
-            return res.status(200).send(_.set(doc, 'receiver', _.map(services, x => x.name)));
+            res.status(200).send(_.set(doc, 'receiver', _.map(services, x => x.name)));
         }
         
         if (_.startsWith(req.body.service, '^') === false && _.startsWith(req.body.service, '*') === false) {
@@ -146,7 +146,7 @@ async function send(req, res) {
 async function shift(req, res) {
     let valid = (await stc(() => validators.shift.validateAsync(req.body)));
     if (_.isError(valid)) {
-        res.status(500).send({ succes: false, message: valid.message });
+        return res.status(500).send({ succes: false, message: valid.message });
     }
 
     try {
@@ -192,7 +192,7 @@ async function shift(req, res) {
 async function log(req, res) {
     let valid = (await stc(() => validators.log.validateAsync(req.body)));
     if (_.isError(valid)) {
-        res.status(500).send({ succes: false, message: valid.message });
+        return res.status(500).send({ succes: false, message: valid.message });
     }
 
     try {
