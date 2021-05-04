@@ -101,28 +101,24 @@ class Worker {
                                 data: value.data,
                             };
 
-                            let runner = async () => {
-                                while (true) {
-                                    try {
-                                        let cbr = listener.cb.call(this, value);
-                                        if (cbr instanceof Promise) {
-                                            (await cbr);
-                                        }
-
-                                        break;
-                                    } catch (error) {
-                                        if (value.retry > retrynum++) {
-                                            (await sleep(10));
-                                            continue;
-                                        }
-
-                                        (await this.MMQI.log(_.set(log, 'message', error.message)));
-                                        break;
+                            while (true) {
+                                try {
+                                    let cbr = listener.cb.call(this, value);
+                                    if (cbr instanceof Promise) {
+                                        (await cbr);
                                     }
-                                }
-                            };
 
-                            setImmediate(runner.bind(this));
+                                    break;
+                                } catch (error) {
+                                    if (value.retry > retrynum++) {
+                                        (await sleep(100));
+                                        continue;
+                                    }
+
+                                    (await this.MMQI.log(_.set(log, 'message', error.message)));
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
